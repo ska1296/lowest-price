@@ -144,6 +144,11 @@ async def llm_extraction_agent(state: GraphState) -> GraphState:
     if captcha_sites:
         print(f"   • CAPTCHA-protected sites filtered: {', '.join(captcha_sites)}")
 
+    # If we have very few results, try to be more lenient
+    if len(valid_results) < 3:
+        print(f"⚠️ Only {len(valid_results)} results found. This may indicate extraction issues.")
+        print("💡 Consider: HTML cleaning too aggressive, or sites have complex layouts")
+
     return state
 
 
@@ -154,7 +159,7 @@ async def _extract_from_url(url_info: Dict, client: httpx.AsyncClient, search_qu
         url = url_info["url"]
 
         print(f"🌐 Fetching from {domain}...")
-        response = await client.get(url, follow_redirects=True, timeout=15)
+        response = await client.get(url, follow_redirects=True, timeout=30)  # Increased timeout
         response.raise_for_status()
 
         print(f"📄 Received {len(response.text)} characters from {domain}")
@@ -216,15 +221,23 @@ async def consolidation_agent(state: GraphState) -> GraphState:
     for i, product in enumerate(all_results, 1):
         print(f"   {i}. {product.site_name}: {product.product_name} - {product.currency}{product.price}")
 
-    # Simple name-based deduplication
-    unique_results = {p.product_name.lower(): p for p in all_results}.values()
+    # More intelligent deduplication - keep results from different sites even if product name is similar
+    unique_results = []
+    seen_combinations = set()
+
+    for product in all_results:
+        # Create a key that includes both product name and site to avoid over-deduplication
+        key = f"{product.product_name.lower().strip()}_{product.site_name}"
+        if key not in seen_combinations:
+            seen_combinations.add(key)
+            unique_results.append(product)
 
     duplicates_removed = len(all_results) - len(unique_results)
     if duplicates_removed > 0:
-        print(f"🔄 Removed {duplicates_removed} duplicate products")
+        print(f"🔄 Removed {duplicates_removed} exact duplicate products")
 
     # Final deterministic sort by price
-    sorted_results = sorted(list(unique_results), key=lambda p: p.price)
+    sorted_results = sorted(unique_results, key=lambda p: p.price)
     state["final_results"] = sorted_results
 
     print(f"✅ Final Results ({len(sorted_results)} products, sorted by price):")

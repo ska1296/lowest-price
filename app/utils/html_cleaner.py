@@ -23,12 +23,12 @@ def preprocess_html_for_llm(html: str) -> str:
         
     soup = BeautifulSoup(html, 'lxml')
 
-    # 1. Remove irrelevant tags but keep some structure
-    for tag in soup(["script", "style", "svg", "iframe", "noscript"]):
+    # 1. Remove only the most problematic tags, keep more content
+    for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
 
-    # Remove navigation and footer but keep header (might have product info)
-    for tag in soup(["nav", "footer"]):
+    # Be more selective about what we remove
+    for tag in soup(["nav", "footer", "iframe"]):
         tag.decompose()
 
     # 2. Remove recommendation/related product sections that confuse the LLM
@@ -80,13 +80,34 @@ def preprocess_html_for_llm(html: str) -> str:
         elif any(keyword in attrs_str.lower() for keyword in ['stock', 'availability', 'available', 'inventory']):
             simplified_text.append(f"[AVAILABILITY HINT]: {text}")
         else:
-            # Only add text if it seems meaningful and not too long
-            if 5 <= len(text) <= 200 and (re.search(r'\d', text) or any(word in text.lower() for word in ['product', 'item', 'buy', 'add', 'cart'])):
-                simplified_text.append(text)
+            # Be more lenient with text inclusion
+            if len(text) >= 3 and len(text) <= 300:
+                # Include if it has numbers, currency symbols, or key e-commerce words
+                if (re.search(r'[\d₹$£€]', text) or
+                    any(word in text.lower() for word in ['product', 'item', 'buy', 'add', 'cart', 'price', 'offer', 'sale', 'discount'])):
+                    simplified_text.append(text)
 
-    # 4. Join the text lines and limit the size
+    # 5. Join the text lines and limit the size
     final_text = '\n'.join(simplified_text)
-    return final_text[:8000]  # Limit to 8k chars of the most relevant content
+
+    # If we got very little content, try a much more lenient approach
+    if len(final_text) < 1000:
+        print(f"⚠️ HTML cleaning produced only {len(final_text)} chars, trying fallback approach...")
+        # Fallback: get all text content with minimal filtering
+        fallback_text = []
+        for element in main_content.find_all(text=True):
+            text = element.strip()
+            if text and len(text) > 2 and not text.isspace():
+                # Skip only obvious navigation/footer content
+                if not any(skip in text.lower() for skip in ['cookie', 'privacy policy', 'terms of service', 'newsletter']):
+                    fallback_text.append(text)
+
+        fallback_content = '\n'.join(fallback_text[:200])  # Take first 200 text nodes
+        if len(fallback_content) > len(final_text):
+            final_text = fallback_content
+            print(f"✅ Fallback approach produced {len(final_text)} chars")
+
+    return final_text[:12000]  # Increased to 12k chars for better coverage
 
 
 def extract_product_hints(html: str) -> dict:

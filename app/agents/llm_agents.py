@@ -40,8 +40,13 @@ async def discover_sites(country: str) -> List[Dict]:
     Returns:
         List of site dictionaries with 'domain' and 'base_url' keys
     """
-    prompt = f"""You are an e-commerce expert. Identify the top 5 most popular e-commerce websites for buying new consumer electronics in the country with code '{country}'.
-Return ONLY a JSON list of objects, each with a 'domain' and 'base_url' key. Example: [{{"domain": "amazon.com", "base_url": "https://www.amazon.com"}}]"""
+    prompt = f"""You are an e-commerce expert. Identify the top 8-10 most popular e-commerce websites for buying new consumer electronics in the country with code '{country}'.
+
+Include major retailers, electronics stores, department stores, and mobile carrier stores.
+For {country}, include both international sites (like Amazon) and major local retailers.
+
+Return ONLY a JSON list of objects, each with a 'domain' and 'base_url' key.
+Example: [{{"domain": "amazon.com", "base_url": "https://www.amazon.com"}}, {{"domain": "bestbuy.com", "base_url": "https://www.bestbuy.com"}}]"""
 
     response = await _llm.ainvoke(prompt)
     try:
@@ -133,14 +138,19 @@ Extract the main product that matches the search query "{search_query}". If no m
         if not response.product_name or response.price <= 0:
             return None
 
-        # Check if product name is relevant to search query
+        # More lenient relevance check for search query
         if search_query:
             search_words = search_query.lower().split()
-            product_words = response.product_name.lower().split()
+            product_name_lower = response.product_name.lower()
 
-            # At least one significant word should match
-            significant_words = [w for w in search_words if len(w) > 3 and w not in ['the', 'and', 'for', 'with']]
-            if significant_words and not any(word in response.product_name.lower() for word in significant_words):
+            # Look for brand names and key product identifiers
+            significant_words = [w for w in search_words if len(w) > 2 and w not in ['the', 'and', 'for', 'with', 'buy', 'get']]
+
+            # Be more lenient - if any significant word matches OR if it's a reasonable product name, keep it
+            has_match = any(word in product_name_lower for word in significant_words)
+            is_reasonable_product = len(response.product_name) > 5 and not any(skip in product_name_lower for skip in ['error', 'not found', 'page'])
+
+            if significant_words and not has_match and not is_reasonable_product:
                 print(f"❌ Product '{response.product_name}' doesn't match search '{search_query}' - skipping")
                 return None
 
