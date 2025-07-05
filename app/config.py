@@ -19,11 +19,9 @@ class Settings:
     # SerpApi Configuration
     SERPAPI_API_KEY: Optional[str] = os.environ.get("SERPAPI_API_KEY")
 
-    # Database Configuration
-    DB_FILE: str = "price_comparison.db"
-    
-    # Cache Configuration
-    CACHE_DURATION_HOURS: int = 24
+    # Cache Configuration (disabled)
+    # DB_FILE: str = "price_comparison.db"  # Caching removed
+    # CACHE_DURATION_HOURS: int = 24  # Caching removed
     
     # HTTP Configuration
     HTTP_CLIENT_TIMEOUT: int = 15

@@ -34,7 +34,9 @@ async def find_product_urls(query: str, sites: List[Dict[str, str]]) -> List[Dic
 
 def _search_for_site(query: str, site_info: Dict[str, str]) -> Optional[Dict[str, str]]:
     """Synchronous wrapper for SerpApi search."""
+    domain = site_info["domain"]
     try:
+        print(f"🔍 Searching Google for '{query}' on {domain}...")
         params = {
             "q": query,
             "api_key": settings.SERPAPI_API_KEY,
@@ -43,12 +45,17 @@ def _search_for_site(query: str, site_info: Dict[str, str]) -> Optional[Dict[str
         }
         search = GoogleSearch(params)
         results = search.get_dict()
-        
+
         # Get the link from the first organic result
         if "organic_results" in results and results["organic_results"]:
             top_link = results["organic_results"][0].get("link")
             if top_link:
-                return {"domain": site_info["domain"], "url": top_link}
+                print(f"✅ Found URL for {domain}: {top_link}")
+                return {"domain": domain, "url": top_link}
+            else:
+                print(f"❌ No URL found in search results for {domain}")
+        else:
+            print(f"❌ No organic results found for {domain}")
     except Exception as e:
-        print(f"SerpApi search failed for {site_info['domain']}: {e}")
+        print(f"❌ SerpApi search failed for {domain}: {e}")
     return None

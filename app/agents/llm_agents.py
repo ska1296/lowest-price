@@ -23,7 +23,7 @@ class ProductInfoTool(BaseModel):
 
 # Initialize LLM instances
 _llm = ChatVertexAI(
-    model_name="gemini-1.5-flash-001",
+    model_name="gemini-2.5-flash",
     temperature=0
 )
 _tool_llm = _llm.with_structured_output(ProductInfoTool, method="tool_calling")
@@ -84,10 +84,31 @@ async def extract_from_html(html: str, site_name: str) -> Optional[ProductResult
     Returns:
         ProductResult if extraction successful, None otherwise
     """
-    prompt = f"From this HTML of {site_name}, find the most relevant product and extract its details using the provided tool. HTML: \n\n{html[:8000]}"
+    # Enhanced prompt with better instructions
+    prompt = f"""From this HTML of {site_name}, find the MAIN product being sold on this page and extract its details using the provided tool.
+
+IMPORTANT INSTRUCTIONS:
+- Look for the primary product title, not page titles or navigation text
+- Extract the actual selling price, not MSRP or crossed-out prices
+- Use standard currency codes (USD, GBP, EUR) not symbols
+- If multiple products exist, pick the most prominent/featured one
+- If no clear product is found, return "Product Not Found" as the name
+
+HTML content (first 10000 chars):
+{html[:10000]}"""
 
     try:
         response: ProductInfoTool = await _tool_llm.ainvoke(prompt)
+
+        # Validate the response
+        if not response.product_name or response.product_name.strip() == "":
+            return None
+
+        # Skip if it looks like a page title rather than product
+        skip_phrases = ["country selection", "page not found", "error", "404", "access denied"]
+        if any(phrase in response.product_name.lower() for phrase in skip_phrases):
+            return None
+
         return ProductResult(
             product_name=response.product_name,
             price=response.price,
@@ -95,7 +116,7 @@ async def extract_from_html(html: str, site_name: str) -> Optional[ProductResult
             availability=response.availability,
             site_name=site_name,
             link="",  # Will be filled by calling agent
-            confidence_score=0.7
+            confidence_score=0.8
         )
     except Exception as e:
         print(f"Tier 2 LLM extraction failed for {site_name}: {e}")
