@@ -1,30 +1,34 @@
 """
 Site configuration management for Tier 1 scrapers.
+This now focuses ONLY on selectors for a given product page.
 """
 
 from typing import Optional, Dict
 
 
 # Static configurations for Tier 1 scrapers
-# This does NOT know which sites belong to which country.
-# It only provides the 'how-to' for scraping a known site.
+# This focuses on product page selectors, not search URLs
 SITE_CONFIGS = {
     "books.toscrape.com": {
         "name": "Books To Scrape",
-        "search_url_template": "http://books.toscrape.com/catalogue/search.html?q={query}",
-        "base_url": "http://books.toscrape.com",
+        "currency": "GBP",  # Static currency per domain
         "selectors": {
-            "container": "article.product_pod",
-            "title": "h3 a",
+            "container": "div.product_main",  # Selector for the main product block on the page
+            "title": "h1",
             "price": "p.price_color",
-            "link": "h3 a",
         }
     }
-    # TODO: Add more pre-written Tier 1 scraper configs here for other sites.
+    # TODO: Add more configs for direct product pages (e.g., Amazon's #productTitle, #priceblock_ourprice)
     # Examples:
-    # "amazon.com": {...},
-    # "ebay.com": {...},
-    # "bestbuy.com": {...},
+    # "amazon.com": {
+    #     "name": "Amazon",
+    #     "currency": "USD",
+    #     "selectors": {
+    #         "container": "#dp-container",
+    #         "title": "#productTitle",
+    #         "price": ".a-price-whole",
+    #     }
+    # },
 }
 
 

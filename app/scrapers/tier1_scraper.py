@@ -1,11 +1,9 @@
 """
-Tier 1 scraper using BeautifulSoup for fast, traditional web scraping.
+Tier 1 scraper - now operates on a direct product page URL.
 """
 
 import re
-from typing import List, Dict
-from urllib.parse import quote, urljoin
-
+from typing import Dict
 import httpx
 from bs4 import BeautifulSoup
 
@@ -13,63 +11,50 @@ from app.config import settings
 from app.models import ProductResult
 
 
-async def scrape_site(site_config: Dict, query: str, client: httpx.AsyncClient) -> List[ProductResult]:
+async def scrape_product_page(
+    page_url: str,
+    site_config: Dict,
+    client: httpx.AsyncClient
+) -> ProductResult:
     """
-    Scrape products using pre-configured selectors.
+    Scrapes a single product page using pre-configured selectors.
 
     Args:
-        site_config: Site configuration with selectors and URLs
-        query: Search query
-        client: HTTP client for making requests
+        page_url: The direct URL to the product page.
+        site_config: Configuration with selectors and currency.
+        client: HTTP client.
 
     Returns:
-        List of ProductResult objects
+        A single ProductResult object.
 
     Raises:
-        ValueError: If no products found
-        Exception: For other scraping errors
+        ValueError: If scraping fails.
     """
-    search_url = site_config['search_url_template'].format(query=quote(query))
-    response = await client.get(
-        search_url,
-        follow_redirects=True,
-        timeout=settings.HTTP_CLIENT_TIMEOUT
-    )
+    response = await client.get(page_url, follow_redirects=True, timeout=settings.HTTP_CLIENT_TIMEOUT)
     response.raise_for_status()
 
     soup = BeautifulSoup(response.text, 'lxml')
     selectors = site_config['selectors']
-    containers = soup.select(selectors['container'])
 
-    results = []
-    for container in containers[:5]:  # Limit results per site
-        try:
-            title_elem = container.select_one(selectors['title'])
-            price_elem = container.select_one(selectors['price'])
-            link_elem = container.select_one(selectors['link'])
+    # The container is now the whole page, or a specific main block
+    container = soup.select_one(selectors['container']) or soup
 
-            if not (title_elem and price_elem and link_elem):
-                continue
+    title_elem = container.select_one(selectors['title'])
+    price_elem = container.select_one(selectors['price'])
 
-            price_text = price_elem.get_text(strip=True)
-            price_match = re.search(r'([\d,]+\.?\d*)', price_text.replace(',', ''))
-            if not price_match:
-                continue
+    if not (title_elem and price_elem):
+        raise ValueError("Essential selectors (title, price) not found on product page.")
 
-            product = ProductResult(
-                product_name=title_elem.get('title', title_elem.get_text(strip=True)),
-                price=float(price_match.group(1)),
-                currency="GBP",  # TODO: Make this dynamic based on country
-                link=urljoin(site_config['base_url'], link_elem.get('href', '')),
-                site_name=site_config.get('name'),
-                confidence_score=0.9
-            )
-            results.append(product)
-        except Exception:
-            # Skip individual product parsing errors
-            continue
+    price_text = price_elem.get_text(strip=True)
+    price_match = re.search(r'([\d,]+\.?\d*)', price_text.replace(',', ''))
+    if not price_match:
+        raise ValueError("Could not parse price from text.")
 
-    if not results:
-        raise ValueError("No products found via Tier 1 selectors.")
-
-    return results
+    return ProductResult(
+        product_name=title_elem.get_text(strip=True),
+        price=float(price_match.group(1)),
+        currency=site_config.get("currency", "USD"),  # Use currency from config
+        link=page_url,
+        site_name=site_config.get('name'),
+        confidence_score=0.9
+    )

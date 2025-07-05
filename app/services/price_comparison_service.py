@@ -53,6 +53,7 @@ async def search_products(request: ProductSearchRequest) -> SearchResponse:
         start_time=start_time,
         selected_sites=[],
         enhanced_query="",
+        product_urls=[],  # NEW: Initialize product URLs list
         successful_scrapes=[],
         failed_scrapes=[],
         healed_results=[],

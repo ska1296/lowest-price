@@ -52,6 +52,7 @@ class GraphState(TypedDict):
     start_time: float
     selected_sites: List[Dict[str, str]]
     enhanced_query: str
+    product_urls: List[Dict[str, str]]  # NEW: Stores discovered product URLs
     successful_scrapes: List[ProductResult]
     failed_scrapes: List[Dict[str, Any]]
     healed_results: List[ProductResult]
