@@ -1,5 +1,5 @@
 """
-Main workflow orchestration using LangGraph, now with URL Discovery agent.
+Main workflow orchestration using LangGraph - fully dynamic, config-free approach.
 """
 
 import asyncio
@@ -10,35 +10,27 @@ from langgraph.graph import StateGraph, END
 
 from app.models import GraphState
 from app.core.cache import get_country_sites, cache_country_sites
-from app.agents.site_config import get_site_config
 from app.agents.llm_agents import discover_sites, enhance_query, extract_from_html
-from app.agents.product_url_discovery import find_product_urls  # NEW AGENT
-from app.scrapers.tier1_scraper import scrape_product_page  # NEW SCRAPER
+from app.agents.product_url_discovery import find_product_urls
 
 
 def create_workflow() -> StateGraph:
-    """Create and compile the workflow graph."""
+    """Create and compile the workflow graph - fully dynamic, config-free approach."""
     workflow = StateGraph(GraphState)
 
-    # Add nodes
+    # Add nodes - removed Tier 1 scraping, go directly to LLM extraction
     workflow.add_node("site_selection", site_selection_agent)
     workflow.add_node("query_enhancement", query_enhancement_agent)
-    workflow.add_node("url_discovery", url_discovery_agent)  # NEW NODE
-    workflow.add_node("scraping", scraping_agent)
-    workflow.add_node("healing", healing_agent)
+    workflow.add_node("url_discovery", url_discovery_agent)
+    workflow.add_node("llm_extraction", llm_extraction_agent)  # Renamed from "healing"
     workflow.add_node("consolidation", consolidation_agent)
 
-    # Define the new flow
+    # Define the streamlined flow: Site Selection → Query Enhancement → URL Discovery → LLM Extraction → Consolidation
     workflow.set_entry_point("site_selection")
     workflow.add_edge("site_selection", "query_enhancement")
-    workflow.add_edge("query_enhancement", "url_discovery")  # REROUTE
-    workflow.add_edge("url_discovery", "scraping")  # REROUTE
-    workflow.add_conditional_edges(
-        "scraping",
-        should_heal,
-        {"continue_to_heal": "healing", "skip_to_consolidate": "consolidation"}
-    )
-    workflow.add_edge("healing", "consolidation")
+    workflow.add_edge("query_enhancement", "url_discovery")
+    workflow.add_edge("url_discovery", "llm_extraction")  # Direct to LLM extraction
+    workflow.add_edge("llm_extraction", "consolidation")
     workflow.add_edge("consolidation", END)
 
     return workflow.compile()
@@ -75,99 +67,65 @@ async def query_enhancement_agent(state: GraphState) -> GraphState:
 
 
 async def url_discovery_agent(state: GraphState) -> GraphState:
-    """NEW AGENT NODE: Finds direct product URLs for each site."""
+    """AGENT: Finds direct product URLs for each site using SerpAPI."""
     print("---AGENT: Product URL Discovery (via SerpApi)---")
     state["product_urls"] = await find_product_urls(state["enhanced_query"], state["selected_sites"])
     print(f"Discovered {len(state['product_urls'])} product URLs.")
     return state
 
-async def scraping_agent(state: GraphState) -> GraphState:
-    """MODIFIED AGENT: Scrapes direct product URLs instead of search pages."""
-    print("---AGENT: Tier 1 Scraping (Product Pages)---")
-    urls_to_scrape = state["product_urls"]
+async def llm_extraction_agent(state: GraphState) -> GraphState:
+    """AGENT: LLM-based extraction for all discovered product URLs."""
+    print("---AGENT: LLM Extraction (All Sites)---")
+    extraction_tasks = []
 
     async with httpx.AsyncClient(headers={'User-Agent': 'Mozilla/5.0'}) as client:
-        tasks = [_scrape_url_task(site_info, client) for site_info in urls_to_scrape]
-        results = await asyncio.gather(*tasks)
+        # Fetch HTML for all discovered URLs
+        for url_info in state["product_urls"]:
+            extraction_tasks.append(_extract_from_url(url_info, client))
 
-    for status, result in results:
-        if status == "success":
-            state["successful_scrapes"].append(result)
-            state["tier_stats"]["tier1_success"] += 1
-        else:
-            state["failed_scrapes"].append(result)
-            state["tier_stats"]["tier1_fails"] += 1
+    results = await asyncio.gather(*extraction_tasks)
 
-    return state
-
-async def _scrape_url_task(site_info: Dict, client: httpx.AsyncClient):
-    """Helper to manage Tier 1 scraping for a single product URL."""
-    domain = site_info["domain"]
-    url = site_info["url"]
-    config = get_site_config(domain)
-
-    if not config:
-        # If no Tier 1 config, fail immediately to Tier 2 healing
-        print(f"No Tier 1 config for {domain}. Failing to Tier 2.")
-        return "failure", {"reason": "no_config", "site_info": site_info}
-
-    try:
-        product = await scrape_product_page(url, config, client)
-        print(f"Tier 1 SUCCESS for {domain}.")
-        return "success", product
-    except Exception as e:
-        print(f"Tier 1 FAILED for {domain}: {e}. Failing to Tier 2.")
-        # On failure, we need to fetch the HTML for the healing agent
-        try:
-            response = await client.get(url, follow_redirects=True)
-            return "failure", {"reason": "scrape_failed", "site_info": site_info, "html": response.text, "error": str(e)}
-        except Exception as fetch_e:
-            return "failure", {"reason": "fetch_failed", "site_info": site_info, "error": str(fetch_e)}
-
-
-def should_heal(state: GraphState) -> str:
-    """Conditional edge router."""
-    if state["failed_scrapes"]:
-        return "continue_to_heal"
-    return "skip_to_consolidate"
-
-async def healing_agent(state: GraphState) -> GraphState:
-    """AGENT: Tier 2 healing using LLM extraction."""
-    print("---AGENT: Tier 2 Healing---")
-    healing_tasks = []
-
-    for failure in state["failed_scrapes"]:
-        # We need to fetch the HTML if it wasn't already fetched during the scrape failure
-        if "html" not in failure:
-            try:
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(failure["site_info"]["url"])
-                    failure["html"] = response.text
-            except Exception:
-                continue  # Skip if we can't even fetch the page
-
-        site_name = failure["site_info"]["domain"]
-        healing_tasks.append(extract_from_html(failure["html"], site_name))
-
-    results = await asyncio.gather(*healing_tasks)
+    # Process results
     for result in results:
         if result:
-            failure_info = next(
-                (f for f in state["failed_scrapes"] if f["site_info"]["domain"] == result.site_name),
-                None
-            )
-            if failure_info:
-                result.link = failure_info['site_info']['url']
-            state["healed_results"].append(result)
+            state["final_results"].append(result)
             state["tier_stats"]["tier2_success"] += 1
+        else:
+            state["tier_stats"]["tier1_fails"] += 1  # Count as failed extraction
 
+    print(f"Successfully extracted {len([r for r in results if r])} products from {len(state['product_urls'])} URLs.")
     return state
+
+
+async def _extract_from_url(url_info: Dict, client: httpx.AsyncClient):
+    """Helper to fetch HTML and extract product data using LLM."""
+    try:
+        domain = url_info["domain"]
+        url = url_info["url"]
+
+        print(f"Fetching and extracting from {domain}...")
+        response = await client.get(url, follow_redirects=True, timeout=15)
+        response.raise_for_status()
+
+        # Use LLM to extract product information
+        result = await extract_from_html(response.text, domain)
+        if result:
+            result.link = url  # Set the actual product URL
+            print(f"LLM extraction SUCCESS for {domain}")
+            return result
+        else:
+            print(f"LLM extraction FAILED for {domain}")
+            return None
+
+    except Exception as e:
+        print(f"Failed to fetch/extract from {url_info.get('domain', 'unknown')}: {e}")
+        return None
 
 
 async def consolidation_agent(state: GraphState) -> GraphState:
     """AGENT: Consolidate and deduplicate results."""
     print("---AGENT: Consolidation---")
-    all_results = state["successful_scrapes"] + state["healed_results"]
+    all_results = state["final_results"]  # Results are already in final_results from LLM extraction
 
     # Simple name-based deduplication
     unique_results = {p.product_name.lower(): p for p in all_results}.values()
@@ -175,4 +133,5 @@ async def consolidation_agent(state: GraphState) -> GraphState:
     # Final deterministic sort by price
     state["final_results"] = sorted(list(unique_results), key=lambda p: p.price)
 
+    print(f"Final results: {len(state['final_results'])} unique products after deduplication and sorting.")
     return state

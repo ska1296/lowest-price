@@ -6,14 +6,14 @@ import json
 import re
 from typing import List, Dict, Optional
 
-from langchain_core.pydantic_v1 import BaseModel as V1BaseModel, Field
+from pydantic import BaseModel, Field
 from langchain_google_vertexai import ChatVertexAI
 
 from app.config import settings
 from app.models import ProductResult
 
 
-class ProductInfoTool(V1BaseModel):
+class ProductInfoTool(BaseModel):
     """A tool to extract structured product information from HTML text."""
     product_name: str = Field(description="The full name of the product.")
     price: float = Field(description="The price of the product as a float.")
@@ -23,7 +23,6 @@ class ProductInfoTool(V1BaseModel):
 
 # Initialize LLM instances
 _llm = ChatVertexAI(
-    project=settings.GCP_PROJECT,
     model_name="gemini-1.5-flash-001",
     temperature=0
 )

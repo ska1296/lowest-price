@@ -53,13 +53,10 @@ async def search_products(request: ProductSearchRequest) -> SearchResponse:
         start_time=start_time,
         selected_sites=[],
         enhanced_query="",
-        product_urls=[],  # NEW: Initialize product URLs list
-        successful_scrapes=[],
-        failed_scrapes=[],
-        healed_results=[],
-        final_results=[],
+        product_urls=[],  # Discovered product URLs from SerpAPI
+        final_results=[],  # All results go directly here from LLM extraction
         errors=[],
-        tier_stats={"tier1_success": 0, "tier2_success": 0, "tier1_fails": 0}
+        tier_stats={"tier2_success": 0, "tier1_fails": 0}  # Only track LLM extraction stats
     )
 
     # Execute the workflow

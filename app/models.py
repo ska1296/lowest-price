@@ -47,15 +47,12 @@ class SearchResponse(BaseModel):
 
 
 class GraphState(TypedDict):
-    """State object for the LangGraph workflow."""
+    """State object for the LangGraph workflow - simplified for config-free approach."""
     request: ProductSearchRequest
     start_time: float
     selected_sites: List[Dict[str, str]]
     enhanced_query: str
-    product_urls: List[Dict[str, str]]  # NEW: Stores discovered product URLs
-    successful_scrapes: List[ProductResult]
-    failed_scrapes: List[Dict[str, Any]]
-    healed_results: List[ProductResult]
-    final_results: List[ProductResult]
+    product_urls: List[Dict[str, str]]  # Stores discovered product URLs from SerpAPI
+    final_results: List[ProductResult]  # All results go directly here from LLM extraction
     errors: List[str]
-    tier_stats: Dict[str, int]
+    tier_stats: Dict[str, int]  # Track extraction success/failure stats

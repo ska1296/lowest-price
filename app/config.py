@@ -12,9 +12,8 @@ load_dotenv()
 
 class Settings:
     """Application settings and configuration."""
-    
-    # GCP Configuration
-    GCP_PROJECT: Optional[str] = os.environ.get("GCLOUD_PROJECT")
+
+    # GCP Configuration - only need service account credentials
     GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 
     # SerpApi Configuration
@@ -33,22 +32,25 @@ class Settings:
     API_TITLE: str = "Ultimate Price Comparison API"
     API_VERSION: str = "3.0.0"
 
-    def __post_init__(self):
-        if not self.GCP_PROJECT:
-            raise ValueError("GCLOUD_PROJECT environment variable not set.")
+    def validate_required_vars(self):
+        """Validate that all required environment variables are set."""
+        missing = []
         if not self.GOOGLE_APPLICATION_CREDENTIALS:
-            raise ValueError("GOOGLE_APPLICATION_CREDENTIALS environment variable not set.")
+            missing.append("GOOGLE_APPLICATION_CREDENTIALS")
         if not self.SERPAPI_API_KEY:
-            raise ValueError("SERPAPI_API_KEY environment variable not set.")
+            missing.append("SERPAPI_API_KEY")
+
+        if missing:
+            raise ValueError(f"Required environment variables not set: {', '.join(missing)}")
 
 
 # Global settings instance
 settings = Settings()
 
-# Validate required environment variables on import
-if not settings.GCP_PROJECT:
-    raise ValueError("GCLOUD_PROJECT environment variable not set.")
+# Validate required environment variables on import (only warn, don't fail)
+import warnings
+
 if not settings.GOOGLE_APPLICATION_CREDENTIALS:
-    raise ValueError("GOOGLE_APPLICATION_CREDENTIALS environment variable not set.")
+    warnings.warn("GOOGLE_APPLICATION_CREDENTIALS environment variable not set. Set it before running the application.")
 if not settings.SERPAPI_API_KEY:
-    raise ValueError("SERPAPI_API_KEY environment variable not set.")
+    warnings.warn("SERPAPI_API_KEY environment variable not set. Set it before running the application.")

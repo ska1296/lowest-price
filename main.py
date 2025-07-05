@@ -7,7 +7,7 @@ Usage:
 
 Requirements:
     1. pip install -r requirements.txt
-    2. Set GCLOUD_PROJECT environment variable: export GCLOUD_PROJECT="your-gcp-project-id"
+    2. Set environment variables (see .env.example)
 """
 
 import os
@@ -15,10 +15,13 @@ import sys
 
 def main():
     """Main entry point for the application."""
-    # Check if GCLOUD_PROJECT is set
-    if not os.environ.get("GCLOUD_PROJECT"):
-        print("ERROR: GCLOUD_PROJECT environment variable not set.")
-        print("Please set it with: export GCLOUD_PROJECT='your-gcp-project-id'")
+    # Validate all required environment variables
+    try:
+        from app.config import settings
+        settings.validate_required_vars()
+    except ValueError as e:
+        print(f"ERROR: {e}")
+        print("Please check the .env.example file for required environment variables.")
         sys.exit(1)
     
     # Import and run the app
