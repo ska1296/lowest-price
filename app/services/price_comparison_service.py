@@ -53,8 +53,8 @@ async def search_products(request: ProductSearchRequest) -> SearchResponse:
         start_time=start_time,
         selected_sites=[],
         enhanced_query="",
-        product_urls=[],  # Discovered product URLs from SerpAPI
-        final_results=[],  # All results go directly here from LLM extraction
+        product_urls=[],           # Discovered product URLs from SerpAPI
+        final_results=[],          # All results go directly here from LLM extraction
         errors=[],
         tier_stats={"tier2_success": 0, "tier1_fails": 0}  # Only track LLM extraction stats
     )

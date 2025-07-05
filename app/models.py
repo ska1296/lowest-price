@@ -47,7 +47,7 @@ class SearchResponse(BaseModel):
 
 
 class GraphState(TypedDict):
-    """State object for the LangGraph workflow - simplified for config-free approach."""
+    """State object for the LangGraph workflow - fully dynamic LLM-based approach."""
     request: ProductSearchRequest
     start_time: float
     selected_sites: List[Dict[str, str]]

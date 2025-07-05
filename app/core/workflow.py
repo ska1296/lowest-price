@@ -9,7 +9,7 @@ import httpx
 from langgraph.graph import StateGraph, END
 
 from app.models import GraphState
-# Caching removed - always use fresh LLM discovery
+# Fully dynamic approach - no caching, no site configs, no tier1 scraping
 from app.agents.llm_agents import discover_sites, enhance_query, extract_from_html
 from app.agents.product_url_discovery import find_product_urls
 
@@ -18,14 +18,14 @@ def create_workflow() -> StateGraph:
     """Create and compile the workflow graph - fully dynamic, config-free approach."""
     workflow = StateGraph(GraphState)
 
-    # Add nodes - removed Tier 1 scraping, go directly to LLM extraction
+    # Add nodes - fully dynamic LLM-based approach (no site configs)
     workflow.add_node("site_selection", site_selection_agent)
     workflow.add_node("query_enhancement", query_enhancement_agent)
     workflow.add_node("url_discovery", url_discovery_agent)
-    workflow.add_node("llm_extraction", llm_extraction_agent)  # Renamed from "healing"
+    workflow.add_node("llm_extraction", llm_extraction_agent)  # Direct LLM extraction for all sites
     workflow.add_node("consolidation", consolidation_agent)
 
-    # Define the streamlined flow: Site Selection → Query Enhancement → URL Discovery → LLM Extraction → Consolidation
+    # Define the streamlined flow - skip Tier 1 scraping entirely
     workflow.set_entry_point("site_selection")
     workflow.add_edge("site_selection", "query_enhancement")
     workflow.add_edge("query_enhancement", "url_discovery")
@@ -99,7 +99,7 @@ async def url_discovery_agent(state: GraphState) -> GraphState:
     return state
 
 async def llm_extraction_agent(state: GraphState) -> GraphState:
-    """AGENT: LLM-based extraction for all discovered product URLs."""
+    """AGENT: Direct LLM extraction for all discovered product URLs (no site configs needed)."""
     print("---AGENT: LLM Extraction (All Sites)---")
 
     if not state["product_urls"]:
@@ -111,8 +111,9 @@ async def llm_extraction_agent(state: GraphState) -> GraphState:
 
     async with httpx.AsyncClient(headers={'User-Agent': 'Mozilla/5.0'}) as client:
         # Fetch HTML for all discovered URLs
+        search_query = state.get("enhanced_query", state["request"].query)
         for url_info in state["product_urls"]:
-            extraction_tasks.append(_extract_from_url(url_info, client))
+            extraction_tasks.append(_extract_from_url(url_info, client, search_query))
 
         # Execute tasks while client is still open
         results = await asyncio.gather(*extraction_tasks)
@@ -146,6 +147,33 @@ async def llm_extraction_agent(state: GraphState) -> GraphState:
     return state
 
 
+async def _extract_from_url(url_info: Dict, client: httpx.AsyncClient, search_query: str = ""):
+    """Helper to fetch HTML and extract product data using LLM."""
+    try:
+        domain = url_info["domain"]
+        url = url_info["url"]
+
+        print(f"🌐 Fetching from {domain}...")
+        response = await client.get(url, follow_redirects=True, timeout=15)
+        response.raise_for_status()
+
+        print(f"📄 Received {len(response.text)} characters from {domain}")
+
+        # Use LLM to extract product information with search query context
+        result = await extract_from_html(response.text, domain, search_query)
+        if result:
+            result.link = url  # Set the actual product URL
+            print(f"🤖 LLM extraction completed for {domain}: {result.product_name}")
+            return result
+        else:
+            print(f"❌ LLM extraction failed for {domain}: No matching product found")
+            return None
+
+    except Exception as e:
+        print(f"❌ Failed to fetch/extract from {domain}: {e}")
+        return None
+
+
 def _is_captcha_protected(result) -> bool:
     """Check if the extraction result indicates CAPTCHA protection."""
     if not result:
@@ -167,37 +195,15 @@ def _is_captcha_protected(result) -> bool:
     return any(indicator in text_to_check for indicator in captcha_indicators)
 
 
-async def _extract_from_url(url_info: Dict, client: httpx.AsyncClient):
-    """Helper to fetch HTML and extract product data using LLM."""
-    try:
-        domain = url_info["domain"]
-        url = url_info["url"]
-
-        print(f"🌐 Fetching from {domain}...")
-        response = await client.get(url, follow_redirects=True, timeout=15)
-        response.raise_for_status()
-
-        print(f"📄 Received {len(response.text)} characters from {domain}")
-
-        # Use LLM to extract product information
-        result = await extract_from_html(response.text, domain)
-        if result:
-            result.link = url  # Set the actual product URL
-            print(f"🤖 LLM extraction completed for {domain}")
-            return result
-        else:
-            print(f"❌ LLM extraction failed for {domain}: No product data found")
-            return None
-
-    except Exception as e:
-        print(f"❌ Failed to fetch/extract from {domain}: {e}")
-        return None
+# Helper function removed - now using proper tiered approach
 
 
 async def consolidation_agent(state: GraphState) -> GraphState:
-    """AGENT: Consolidate and deduplicate results."""
+    """AGENT: Consolidate and deduplicate results from LLM extraction."""
     print("---AGENT: Consolidation---")
-    all_results = state["final_results"]  # Results are already in final_results from LLM extraction
+
+    # Results are already in final_results from LLM extraction
+    all_results = state["final_results"]
 
     print(f"📦 Processing {len(all_results)} extracted products...")
 
