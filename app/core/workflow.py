@@ -9,6 +9,7 @@ import httpx
 from langgraph.graph import StateGraph, END
 
 from app.models import GraphState
+from app.config import settings
 # Fully dynamic approach - no caching, no site configs, no tier1 scraping
 from app.agents.llm_agents import discover_sites, enhance_query, extract_from_html
 from app.agents.product_url_discovery import find_product_urls
@@ -99,20 +100,34 @@ async def url_discovery_agent(state: GraphState) -> GraphState:
     return state
 
 async def llm_extraction_agent(state: GraphState) -> GraphState:
-    """AGENT: Direct LLM extraction for all discovered product URLs (no site configs needed)."""
-    print("---AGENT: LLM Extraction (All Sites)---")
+    """AGENT: Direct LLM extraction for discovered product URLs (rate-limited for Gemini free tier)."""
+    print("---AGENT: LLM Extraction (Rate Limited)---")
 
     if not state["product_urls"]:
         print("❌ No URLs to extract from")
         return state
 
-    print(f"🤖 Starting LLM extraction from {len(state['product_urls'])} URLs...")
+    # Adaptive rate limiting to ensure minimum results
+    max_extractions = settings.MAX_SITES_TO_EXTRACT
+    min_required = settings.MIN_REQUIRED_RESULTS
+
+    # If we have fewer URLs than minimum required, process all available
+    if len(state["product_urls"]) <= min_required:
+        urls_to_process = state["product_urls"]
+        print(f"📊 Processing all {len(urls_to_process)} URLs (below minimum threshold)")
+    else:
+        # Use rate limiting but ensure we have enough for minimum results
+        urls_to_process = state["product_urls"][:max_extractions]
+        print(f"⚠️ Rate limiting: Processing {len(urls_to_process)}/{len(state['product_urls'])} URLs to stay within Gemini limits")
+
+    print(f"🤖 Starting LLM extraction from {len(urls_to_process)} URLs...")
     extraction_tasks = []
+    additional_urls = []  # Initialize here to avoid scope issues
 
     async with httpx.AsyncClient(headers={'User-Agent': 'Mozilla/5.0'}) as client:
-        # Fetch HTML for all discovered URLs
+        # Fetch HTML for selected URLs
         search_query = state.get("enhanced_query", state["request"].query)
-        for url_info in state["product_urls"]:
+        for url_info in urls_to_process:
             extraction_tasks.append(_extract_from_url(url_info, client, search_query))
 
         # Execute tasks while client is still open
@@ -138,16 +153,45 @@ async def llm_extraction_agent(state: GraphState) -> GraphState:
             state["tier_stats"]["tier1_fails"] += 1
 
     print(f"📊 Extraction Summary:")
-    print(f"   • Total URLs processed: {len(state['product_urls'])}")
+    print(f"   • Total URLs available: {len(state['product_urls'])}")
+    print(f"   • URLs processed (rate limited): {len(urls_to_process)}")
     print(f"   • Successful extractions: {len(valid_results)}")
     print(f"   • Failed extractions: {len(results) - len(valid_results)}")
     if captcha_sites:
         print(f"   • CAPTCHA-protected sites filtered: {', '.join(captcha_sites)}")
 
-    # If we have very few results, try to be more lenient
-    if len(valid_results) < 3:
-        print(f"⚠️ Only {len(valid_results)} results found. This may indicate extraction issues.")
-        print("💡 Consider: HTML cleaning too aggressive, or sites have complex layouts")
+        # If we don't have enough results and there are more URLs available, try more
+        remaining_urls = state["product_urls"][len(urls_to_process):]
+        if len(valid_results) < settings.MIN_REQUIRED_RESULTS and remaining_urls:
+            additional_needed = settings.MIN_REQUIRED_RESULTS - len(valid_results)
+            additional_urls = remaining_urls[:additional_needed]
+
+            print(f"📈 Need {additional_needed} more results. Processing {len(additional_urls)} additional URLs...")
+
+            # Process additional URLs
+            additional_tasks = []
+            search_query = state.get("enhanced_query", state["request"].query)
+            for url_info in additional_urls:
+                additional_tasks.append(_extract_from_url(url_info, client, search_query))
+
+            additional_results = await asyncio.gather(*additional_tasks)
+
+            # Add successful additional results
+            for result in additional_results:
+                if result and result.get("product_name") != "unknown":
+                    if not any(site in result.get("site_name", "") for site in captcha_sites):
+                        valid_results.append(result)
+                        print(f"✅ Additional extraction: {result['product_name']} from {result['site_name']}")
+
+            print(f"📊 After additional processing: {len(valid_results)} total results")
+
+    # Update tier stats to reflect rate limiting
+    total_processed = len(urls_to_process) + len(additional_urls)
+    state["tier_stats"] = {
+        "tier2_success": len(valid_results),
+        "tier1_fails": total_processed - len(valid_results),
+        "rate_limited": max(0, len(state["product_urls"]) - total_processed)
+    }
 
     return state
 

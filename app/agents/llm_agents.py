@@ -13,6 +13,7 @@ from langchain_google_vertexai import ChatVertexAI
 from app.config import settings
 from app.models import ProductResult
 from app.utils.html_cleaner import preprocess_html_for_llm
+from app.utils.rate_limiter import gemini_rate_limiter, get_static_sites
 
 
 class ProductInfoTool(BaseModel):
@@ -59,7 +60,7 @@ _tool_llm = _get_tool_llm()
 
 async def discover_sites(country: str) -> List[Dict]:
     """
-    Agent: Dynamically discover sites using the LLM.
+    Agent: Discover sites using static cache (to save LLM calls) or LLM fallback.
 
     Args:
         country: Country code to discover sites for
@@ -67,6 +68,17 @@ async def discover_sites(country: str) -> List[Dict]:
     Returns:
         List of site dictionaries with 'domain' and 'base_url' keys
     """
+    # Use static cache first to save LLM calls (Gemini free tier: 10 req/min)
+    if settings.ENABLE_STATIC_SITE_CACHE:
+        static_sites = get_static_sites(country)
+        if static_sites:
+            print(f"🏪 Using static site cache for {country} ({len(static_sites)} sites)")
+            return static_sites
+
+    # Fallback to LLM discovery if no static cache
+    print(f"🤖 Using LLM site discovery for {country} (consuming rate limit)")
+    await gemini_rate_limiter.acquire()
+
     prompt = f"""You are an e-commerce expert. Identify the top 8-10 most popular e-commerce websites for buying new consumer electronics in the country with code '{country}'.
 
 Include major retailers, electronics stores, department stores, and mobile carrier stores.
@@ -87,7 +99,7 @@ Example: [{{"domain": "amazon.com", "base_url": "https://www.amazon.com"}}, {{"d
 
 async def enhance_query(query: str, country: str) -> str:
     """
-    Agent: Enhance user query for better search results.
+    Agent: Enhance user query for better search results (with rate limiting).
 
     Args:
         query: Original user query
@@ -96,6 +108,19 @@ async def enhance_query(query: str, country: str) -> str:
     Returns:
         Enhanced query string
     """
+    # Simple enhancement rules to avoid LLM call for common cases
+    query_lower = query.lower()
+
+    # If query is already well-formed, skip LLM enhancement
+    if any(brand in query_lower for brand in ['iphone', 'samsung', 'sony', 'apple', 'google']):
+        if any(spec in query_lower for spec in ['gb', 'pro', 'max', 'plus', 'mini']):
+            print(f"📝 Query '{query}' is already well-formed, skipping LLM enhancement")
+            return query
+
+    # Use LLM for complex queries
+    print(f"🤖 Using LLM query enhancement (consuming rate limit)")
+    await gemini_rate_limiter.acquire()
+
     prompt = f"""You are a search optimization expert. Transform the user's query into an optimized search term for e-commerce sites.
 Original query: "{query}"
 Target country: {country}
@@ -139,6 +164,18 @@ async def extract_from_html(raw_html: str, site_name: str, search_query: str = "
 - Price must be reasonable (not $0.00 or extremely high)
 - Ignore any text about "related products", "recommendations", "also bought"
 
+**CRITICAL PRICE EXTRACTION RULES:**
+- Extract the MAIN RETAIL PRICE, not promotional/discounted prices
+- Look for terms like "retail price", "full price", "MSRP", "list price", "one-time payment"
+- AVOID monthly payment prices (e.g., "$23.61/mo")
+- AVOID promotional prices (e.g., "starts at $0.00")
+- AVOID trade-in prices or "after discount" prices
+- If you see multiple prices, prioritize in this order:
+  1. "Full retail price" or "One-time payment"
+  2. "MSRP" or "List price"
+  3. Regular price without promotional text
+  4. Monthly payment × number of months (if no other option)
+
 **EXAMPLES:**
 
 ✅ **CORRECT - Product matches search:**
@@ -151,6 +188,16 @@ Search: "iPhone 16 Pro"
 Content: `[MAIN PRODUCT TITLE]: Apple iPhone 16 Pro 128GB\\n[HEADER H2]: Customers also bought\\n[PRICE HINT]: Sony Headphones $349.99`
 DO NOT extract Sony Headphones (doesn't match iPhone search)
 
+✅ **CORRECT - Price extraction from complex pricing:**
+Search: "iPhone 16 Pro 128GB"
+Content: `[MAIN PRODUCT TITLE]: Apple iPhone 16 Pro\\nStarts at $0.00/mo\\n$23.61/mo for 36 mos\\nFull retail price $999.99`
+Extract: Price = 999.99 (use "Full retail price", ignore promotional "$0.00/mo")
+
+❌ **WRONG - Extracting promotional price:**
+Search: "iPhone 16 Pro 128GB"
+Content: `[MAIN PRODUCT TITLE]: Apple iPhone 16 Pro\\nStarts at $0.00/mo\\n$23.61/mo for 36 mos\\nFull retail price $999.99`
+DO NOT extract: Price = 0.00 (this is promotional, not real price)
+
 **Page Content:**
 ---
 {cleaned_html[:6000]}
@@ -159,6 +206,8 @@ DO NOT extract Sony Headphones (doesn't match iPhone search)
 Extract the main product that matches the search query "{search_query}". If no matching product is found, do not call the tool."""
 
     try:
+        # Rate limit LLM extraction calls
+        await gemini_rate_limiter.acquire()
         response: ProductInfoTool = await _tool_llm.ainvoke(prompt)
 
         # Enhanced validation

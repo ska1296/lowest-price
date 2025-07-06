@@ -77,12 +77,37 @@ def _search_for_site(query: str, site_info: Dict[str, str]) -> Optional[Dict[str
                     print(f"        Link: {result.get('link', 'N/A')}")
                     print(f"        Snippet: {result.get('snippet', 'N/A')[:80]}...")
 
-                top_link = results["organic_results"][0].get("link")
-                if top_link:
-                    print(f"✅ Found URL for {domain}: {top_link}")
-                    return {"domain": domain, "url": top_link}
+                # Filter and prioritize product URLs
+                product_urls = []
+                for result in results["organic_results"][:5]:  # Check top 5 results
+                    url = result.get("link", "")
+                    title = result.get("title", "").lower()
+
+                    # Skip non-product URLs
+                    if any(skip_term in url.lower() for skip_term in [
+                        '/search', '/category', '/brand-showcase', '/compare',
+                        '/support', '/help', '/blog', '/news', '/promo'
+                    ]):
+                        continue
+
+                    # Prioritize direct product URLs
+                    if any(product_term in url.lower() for product_term in [
+                        '/product/', '/p/', '/item/', '/dp/', '/buy/', '/shop/'
+                    ]) or any(product_term in title for product_term in [
+                        'iphone', 'samsung', 'sony', 'apple', 'google'
+                    ]):
+                        product_urls.append({"url": url, "title": title, "priority": 1})
+                    else:
+                        product_urls.append({"url": url, "title": title, "priority": 2})
+
+                # Sort by priority and return best URL
+                if product_urls:
+                    best_url = sorted(product_urls, key=lambda x: x["priority"])[0]
+                    print(f"✅ Found product URL for {domain}: {best_url['url']}")
+                    print(f"   Title: {best_url['title'][:80]}...")
+                    return {"domain": domain, "url": best_url["url"]}
                 else:
-                    print(f"❌ No URL found in first organic result for {domain}")
+                    print(f"❌ No product URLs found for {domain}")
             else:
                 print(f"❌ Organic results array is empty for {domain}")
         else:

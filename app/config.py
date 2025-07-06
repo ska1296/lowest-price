@@ -22,6 +22,12 @@ class Settings:
     # SerpApi Configuration
     SERPAPI_API_KEY: Optional[str] = os.environ.get("SERPAPI_API_KEY")
 
+    # Rate Limiting Configuration for Gemini Free Tier (10 req/min)
+    GEMINI_RATE_LIMIT_PER_MINUTE: int = 10
+    MAX_SITES_TO_EXTRACT: int = 5  # Increased to get minimum 3 results
+    ENABLE_STATIC_SITE_CACHE: bool = True  # Cache common sites to reduce LLM calls
+    MIN_REQUIRED_RESULTS: int = 3  # Minimum results required per request
+
     # Cache Configuration (disabled)
     # DB_FILE: str = "price_comparison.db"  # Caching removed
     # CACHE_DURATION_HOURS: int = 24  # Caching removed
