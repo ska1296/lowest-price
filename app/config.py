@@ -13,7 +13,10 @@ load_dotenv()
 class Settings:
     """Application settings and configuration."""
 
-    # GCP Configuration - only need service account credentials
+    # Google AI Studio Configuration (preferred over Vertex AI)
+    GOOGLE_AI_API_KEY: Optional[str] = os.environ.get("GOOGLE_AI_API_KEY")
+
+    # GCP Configuration - fallback to Vertex AI if Google AI Studio not available
     GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 
     # SerpApi Configuration
@@ -33,8 +36,11 @@ class Settings:
     def validate_required_vars(self):
         """Validate that all required environment variables are set."""
         missing = []
-        if not self.GOOGLE_APPLICATION_CREDENTIALS:
-            missing.append("GOOGLE_APPLICATION_CREDENTIALS")
+
+        # Require either Google AI Studio API key OR Vertex AI credentials
+        if not self.GOOGLE_AI_API_KEY and not self.GOOGLE_APPLICATION_CREDENTIALS:
+            missing.append("GOOGLE_AI_API_KEY or GOOGLE_APPLICATION_CREDENTIALS")
+
         if not self.SERPAPI_API_KEY:
             missing.append("SERPAPI_API_KEY")
 
@@ -48,7 +54,7 @@ settings = Settings()
 # Validate required environment variables on import (only warn, don't fail)
 import warnings
 
-if not settings.GOOGLE_APPLICATION_CREDENTIALS:
-    warnings.warn("GOOGLE_APPLICATION_CREDENTIALS environment variable not set. Set it before running the application.")
+if not settings.GOOGLE_AI_API_KEY and not settings.GOOGLE_APPLICATION_CREDENTIALS:
+    warnings.warn("Neither GOOGLE_AI_API_KEY nor GOOGLE_APPLICATION_CREDENTIALS environment variable set. Set one before running the application.")
 if not settings.SERPAPI_API_KEY:
     warnings.warn("SERPAPI_API_KEY environment variable not set. Set it before running the application.")

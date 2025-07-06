@@ -7,6 +7,7 @@ import re
 from typing import List, Dict, Optional
 
 from pydantic import BaseModel, Field
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_google_vertexai import ChatVertexAI
 
 from app.config import settings
@@ -22,12 +23,38 @@ class ProductInfoTool(BaseModel):
     availability: str = Field(description="Availability status, e.g., 'in-stock', 'out-of-stock'.")
 
 
-# Initialize LLM instances
-_llm = ChatVertexAI(
-    model_name="gemini-2.5-flash",
-    temperature=0
-)
-_tool_llm = _llm.with_structured_output(ProductInfoTool, method="tool_calling")
+# Initialize LLM instances - prefer Google AI Studio over Vertex AI
+def _get_llm():
+    """Get the appropriate LLM instance based on available credentials."""
+    if settings.GOOGLE_AI_API_KEY:
+        print("🤖 Using Google AI Studio (Gemini 2.5 Flash)")
+        return ChatGoogleGenerativeAI(
+            model="gemini-2.5-flash",
+            google_api_key=settings.GOOGLE_AI_API_KEY,
+            temperature=0
+        )
+    elif settings.GOOGLE_APPLICATION_CREDENTIALS:
+        print("🤖 Using Vertex AI (Gemini 2.5 Flash)")
+        return ChatVertexAI(
+            model_name="gemini-2.5-flash",
+            temperature=0
+        )
+    else:
+        raise ValueError("No Google AI credentials available. Set GOOGLE_AI_API_KEY or GOOGLE_APPLICATION_CREDENTIALS.")
+
+_llm = _get_llm()
+
+# Configure structured output based on LLM type
+def _get_tool_llm():
+    """Get LLM configured for structured output."""
+    if settings.GOOGLE_AI_API_KEY:
+        # Google AI Studio doesn't support method parameter
+        return _llm.with_structured_output(ProductInfoTool)
+    else:
+        # Vertex AI supports method parameter
+        return _llm.with_structured_output(ProductInfoTool, method="tool_calling")
+
+_tool_llm = _get_tool_llm()
 
 
 async def discover_sites(country: str) -> List[Dict]:
