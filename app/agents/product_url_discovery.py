@@ -27,7 +27,7 @@ async def find_product_urls(query: str, sites: List[Dict[str, str]]) -> List[Dic
         # Construct a site-specific search query for Google
         search_query = f'{query} site:{site["domain"]}'
         tasks.append(loop.run_in_executor(None, _search_for_site, search_query, site))
-    
+
     results = await asyncio.gather(*tasks)
     # Filter out any searches that failed
     return [res for res in results if res]

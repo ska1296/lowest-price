@@ -24,7 +24,7 @@ async def search_products(request: ProductSearchRequest):
     5. Price-based sorting
 
     Args:
-        request: Product search request with country, query, and max_results
+        request: Product search request with country, query
 
     Returns:
         SearchResponse with results sorted by price ascending

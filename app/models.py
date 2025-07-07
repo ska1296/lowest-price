@@ -21,7 +21,6 @@ class ProductSearchRequest(BaseModel):
     """Request model for product search."""
     country: CountryCode
     query: str = Field(..., min_length=3, max_length=200)
-    max_results: int = Field(default=5, ge=1, le=20)
 
 
 class ProductResult(BaseModel):

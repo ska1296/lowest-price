@@ -149,15 +149,15 @@ async def extract_from_html(raw_html: str, site_name: str, search_query: str = "
         print(f"HTML for {site_name} was empty after cleaning. Skipping LLM call.")
         return None
 
-    # Query-aware prompt that helps LLM focus on the right product
-    prompt = f"""You are extracting product information from a page on '{site_name}' that was found by searching for: "{search_query}"
+    # Enhanced anti-hallucination prompt
+    prompt = f"""You are extracting product information from a webpage on '{site_name}'. You MUST ONLY use information that is explicitly present in the provided HTML content below.
 
-**CRITICAL INSTRUCTIONS:**
-1. **Find the MAIN product that matches the search query "{search_query}"**
-2. **Look for `[MAIN PRODUCT TITLE]` first - this is usually the correct product**
-3. **Ignore recommendations, related items, or "customers also bought" sections**
-4. **The product name should be related to "{search_query}" - if it's completely different, DO NOT extract it**
-5. **Use `[PRICE HINT]` for the price, but make sure it's for the main product, not accessories**
+**CRITICAL ANTI-HALLUCINATION RULES:**
+1. **ONLY extract information that is literally present in the HTML content below**
+2. **DO NOT use your training data or general knowledge about products or prices**
+3. **If you cannot find clear price information in the HTML, DO NOT call the tool**
+4. **The product must match the search query "{search_query}" AND be present in the HTML**
+5. **Look for `[MAIN PRODUCT TITLE]` and `[PRICE HINT]` markers in the content**
 
 **VALIDATION RULES:**
 - Product name must be relevant to the search query "{search_query}"
@@ -165,16 +165,22 @@ async def extract_from_html(raw_html: str, site_name: str, search_query: str = "
 - Ignore any text about "related products", "recommendations", "also bought"
 
 **CRITICAL PRICE EXTRACTION RULES:**
-- Extract the MAIN RETAIL PRICE, not promotional/discounted prices
-- Look for terms like "retail price", "full price", "MSRP", "list price", "one-time payment"
-- AVOID monthly payment prices (e.g., "$23.61/mo")
-- AVOID promotional prices (e.g., "starts at $0.00")
-- AVOID trade-in prices or "after discount" prices
-- If you see multiple prices, prioritize in this order:
-  1. "Full retail price" or "One-time payment"
-  2. "MSRP" or "List price"
-  3. Regular price without promotional text
-  4. Monthly payment × number of months (if no other option)
+- Extract the CURRENT SELLING PRICE (the price customers pay now)
+- Look for prices in this priority order:
+  1. `[PRICE HINT]` markers (if available)
+  2. Currency symbols followed by numbers: $999.99, £899, €1099, ₹79999
+  3. Numbers with currency words: 999.99 USD, 899 GBP, 1099 EUR
+  4. Standalone price numbers near product titles
+- PRIORITIZE these price types (in order):
+  1. "Starting at $X" or "From $X" (base/entry price)
+  2. First price mentioned without qualifiers
+  3. Prices near the main product title
+- AVOID these price types:
+  - Monthly payments: "$23.61/mo", "per month", "/month"
+  - Trade-in offers: "as low as", "with trade-in", "after discount"
+  - Promotional: "starts at $0", "from $0"
+  - Original/crossed-out prices: "was $1099", "MSRP", "list price"
+  - Higher storage/variant prices unless specifically requested
 
 **EXAMPLES:**
 
@@ -188,22 +194,32 @@ Search: "iPhone 16 Pro"
 Content: `[MAIN PRODUCT TITLE]: Apple iPhone 16 Pro 128GB\\n[HEADER H2]: Customers also bought\\n[PRICE HINT]: Sony Headphones $349.99`
 DO NOT extract Sony Headphones (doesn't match iPhone search)
 
+✅ **CORRECT - Prioritize "starting at" price:**
+Search: "Samsung Galaxy S24"
+Content: `Starting at $1199.99\\n256GB model: $1299.99\\n512GB model: $1399.99`
+Extract: Price = 1199.99 (use "Starting at" price, not higher variants)
+
 ✅ **CORRECT - Price extraction from complex pricing:**
 Search: "iPhone 16 Pro 128GB"
 Content: `[MAIN PRODUCT TITLE]: Apple iPhone 16 Pro\\nStarts at $0.00/mo\\n$23.61/mo for 36 mos\\nFull retail price $999.99`
 Extract: Price = 999.99 (use "Full retail price", ignore promotional "$0.00/mo")
 
-❌ **WRONG - Extracting promotional price:**
-Search: "iPhone 16 Pro 128GB"
-Content: `[MAIN PRODUCT TITLE]: Apple iPhone 16 Pro\\nStarts at $0.00/mo\\n$23.61/mo for 36 mos\\nFull retail price $999.99`
-DO NOT extract: Price = 0.00 (this is promotional, not real price)
+❌ **WRONG - Extracting higher variant price:**
+Search: "Samsung Galaxy S24"
+Content: `Starting at $1199.99\\n256GB model: $1299.99\\n512GB model: $1399.99`
+DO NOT extract: Price = 1299.99 (this is a higher variant, use "Starting at" instead)
 
-**Page Content:**
+**HTML CONTENT TO ANALYZE:**
 ---
-{cleaned_html[:6000]}
+{cleaned_html[:8000]}
 ---
 
-Extract the main product that matches the search query "{search_query}". If no matching product is found, do not call the tool."""
+**FINAL INSTRUCTION:** Extract the main product information ONLY if:
+1. You can clearly see the product name in the HTML content above
+2. You can clearly see the price in the HTML content above
+3. The product matches "{search_query}"
+
+If any of these conditions are not met, DO NOT call the tool. Do not guess or use external knowledge."""
 
     try:
         # Rate limit LLM extraction calls

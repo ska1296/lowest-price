@@ -64,7 +64,7 @@ async def search_products(request: ProductSearchRequest) -> SearchResponse:
 
     # Calculate metrics
     search_time_ms = int((asyncio.get_event_loop().time() - start_time) * 1000)
-    results = final_state.get("final_results", [])[:request.max_results]
+    results = final_state.get("final_results", [])  # Return all results, no max_results limit
 
     # Build response
     return SearchResponse(

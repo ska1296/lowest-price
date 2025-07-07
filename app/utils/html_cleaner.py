@@ -80,11 +80,14 @@ def preprocess_html_for_llm(html: str) -> str:
         elif any(keyword in attrs_str.lower() for keyword in ['stock', 'availability', 'available', 'inventory']):
             simplified_text.append(f"[AVAILABILITY HINT]: {text}")
         else:
-            # Be more lenient with text inclusion
+            # Be more lenient with text inclusion, especially for prices
             if len(text) >= 3 and len(text) <= 300:
+                # Always include text with currency symbols or price patterns
+                if re.search(r'[\$£€₹¥][\d,]+\.?\d*|[\d,]+\.?\d*\s*(USD|GBP|EUR|INR|CAD|AUD)', text):
+                    simplified_text.append(f"[PRICE CANDIDATE]: {text}")
                 # Include if it has numbers, currency symbols, or key e-commerce words
-                if (re.search(r'[\d₹$£€]', text) or
-                    any(word in text.lower() for word in ['product', 'item', 'buy', 'add', 'cart', 'price', 'offer', 'sale', 'discount'])):
+                elif (re.search(r'[\d₹$£€]', text) or
+                      any(word in text.lower() for word in ['product', 'item', 'buy', 'add', 'cart', 'price', 'offer', 'sale', 'discount'])):
                     simplified_text.append(text)
 
     # 5. Join the text lines and limit the size

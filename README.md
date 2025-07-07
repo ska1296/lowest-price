@@ -44,14 +44,14 @@ python3 main.py
 ```bash
 curl -X POST "http://localhost:8000/search" \
   -H "Content-Type: application/json" \
-  -d '{"country": "US", "query": "iPhone 16 Pro 128GB", "max_results": 5}'
+  -d '{"country": "US", "query": "iPhone 16 Pro 128GB"}'
 ```
 
 **Response:**
 ```json
 {
   "success": true,
-  "total_results": 2,
+  "total_results": 1,
   "results": [
     {
       "link": "https://www.target.com/p/apple-iphone-16-pro-128gb-natural-titanium/-/A-90539822",
