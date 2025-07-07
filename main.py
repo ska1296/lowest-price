@@ -30,8 +30,8 @@ def main():
         from app.main import app
         
         print("Starting Ultimate Price Comparison API...")
-        print("API will be available at: http://localhost:7777")
-        print("API documentation at: http://localhost:7777/docs")
+        print("API will be available at: http://localhost:7777/lp")
+        print("API documentation at: http://localhost:7777/lp/docs")
         
         uvicorn.run(
             "app.main:app",

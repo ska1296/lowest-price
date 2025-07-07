@@ -48,18 +48,18 @@ python3 main.py
 
 ### 🌐 Endpoints
 
-- **API Server**: http://localhost:7777
-- **Interactive Docs**: http://localhost:7777/docs
-- **ReDoc**: http://localhost:7777/redoc
+- **API Server**: http://localhost:7777/lp
+- **Interactive Docs**: http://localhost:7777/lp/docs
+- **ReDoc**: http://localhost:7777/lp/redoc
 
 ## 📖 Usage
 
 ### Search Products
 
-**Endpoint:** `POST /search`
+**Endpoint:** `POST /lp/search`
 
 ```bash
-curl -X POST "http://localhost:7777/search" \
+curl -X POST "http://localhost:7777/lp/search" \
   -H "Content-Type: application/json" \
   -d '{"country": "US", "query": "iPhone 16 Pro 128GB"}'
 ```

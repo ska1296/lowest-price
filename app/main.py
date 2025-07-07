@@ -38,8 +38,8 @@ app = FastAPI(
     version=settings.API_VERSION,
     lifespan=lifespan,
     description="A robust, backend-only tool that can reliably fetch the best price for a given product.",
-    docs_url="/docs",
-    redoc_url="/redoc"
+    docs_url="/lp/docs",
+    redoc_url="/lp/redoc"
 )
 
 # Add CORS middleware
@@ -50,6 +50,6 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-# Include routers
-app.include_router(search.router)
-app.include_router(health.router)
+# Include routers with /lp prefix
+app.include_router(search.router, prefix="/lp")
+app.include_router(health.router, prefix="/lp")

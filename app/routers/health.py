@@ -63,10 +63,10 @@ async def root() -> Dict[str, Any]:
         "version": __version__,
         "description": "A robust, backend-only tool for reliable product price comparison",
         "endpoints": {
-            "search": "/search",
-            "health": "/health",
-            "docs": "/docs",
-            "redoc": "/redoc"
+            "search": "/lp/search",
+            "health": "/lp/health",
+            "docs": "/lp/docs",
+            "redoc": "/lp/redoc"
         },
         "features": [
             "Multi-country support",
