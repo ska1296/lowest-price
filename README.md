@@ -16,7 +16,7 @@
 
 ```bash
 # 1. Clone and setup
-git clone <repository-url>
+git clone git@github.com:ska1296/lowest-price.git
 cd lowest-price
 python3 -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
