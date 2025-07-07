@@ -48,9 +48,9 @@ python3 main.py
 
 ### 🌐 Endpoints
 
-- **API Server**: http://localhost:8000
-- **Interactive Docs**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
+- **API Server**: http://localhost:7777
+- **Interactive Docs**: http://localhost:7777/docs
+- **ReDoc**: http://localhost:7777/redoc
 
 ## 📖 Usage
 
@@ -59,7 +59,7 @@ python3 main.py
 **Endpoint:** `POST /search`
 
 ```bash
-curl -X POST "http://localhost:8000/search" \
+curl -X POST "http://localhost:7777/search" \
   -H "Content-Type: application/json" \
   -d '{"country": "US", "query": "iPhone 16 Pro 128GB"}'
 ```
