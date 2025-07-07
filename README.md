@@ -1,4 +1,4 @@
-# Ultimate Price Comparison API
+# Price Comparison API
 
 **AI-powered price comparison across multiple e-commerce sites with dynamic site discovery and accurate price extraction.**
 
